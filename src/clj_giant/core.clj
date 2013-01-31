@@ -9,202 +9,265 @@
 
 (declare B O I)
 (declare T V W)
+(declare vmul)
+(declare scanl)
+(declare t b n)
 
 ;;;_* Code =============================================================
-;;;_ * Generic operations ----------------------------------------------
+;;;_ * Generic arithmetic ----------------------------------------------
+;;;_  * Protocol -------------------------------------------------------
 (defprotocol N
   "A representation-independent abstraction of natural numbers."
-  (eq [x y] "Structural equality.")
-  (e  [x]   "The empty sequence of binary digits.")
-  (o  [x]   "Add 0 to a binary string.")
-  (o' [x]   "Remove 0 from a binary string.")
-  (i  [x]   "Add 1 to a binary string.")
-  (i' [x]   "Remove 1 from a binary string.")
-  (o_ [x]   "True iff binary string ends with a 0."))
+  (eq          [x y] "Structural equality.")
+  (e           [x]   "The empty sequence of binary digits.")
+  (o           [x]   "Add 0 to a binary string.")
+  (o'          [x]   "Remove 0 from a binary string.")
+  (i           [x]   "Add 1 to a binary string.")
+  (i'          [x]   "Remove 1 from a binary string.")
+  (o_          [x]   "True iff binary string ends with a 0.")
 
-(defn e_ [x] (eq x (e x)))
-(defn i_ [x] (not (or (e_ x) (o_ x))))
+  (e_          [x]   "Zero?")
+  (i_          [x]   "Even?")
+  (s           [x]   "Successor")
+  (s'          [x]   "Predecessor")
 
-(defn s
-  "Successor."
-  [x]
-  (cond
-   (e_ x) (o x)
-   (o_ x) (i (o' x))
-   (i_ x) (o (s (i' x)))))
+  (all-from    [x]   "")
+  (add         [x y] "")
+  (sub         [x y] "")
+  (cmp         [x y] "")
+  (min2        [x y] "")
+  (max2        [x y] "")
+  (mul         [x y] "")
+  (db          [x]   "")
+  (hf          [x]   "")
+  (pow         [x y] "")
+  (exp2        [x]   "")
+  (leftshift   [x y] "")
+  (div-and-rem [x y] "")
+  (divide      [x y] "")
+  (remainder   [x y] ""))
 
-(defn s'
-  "Predecessor."
-  [x]
-  (cond
-   (eq x (o (e x))) (e x)
-   (i_ x)           (o (i' x))
-   (o_ x)           (i (s' (o' x)))))
+(def N-defaults
+  {:eq
+   (fn [x y] (= x y))
 
-(defn all-from [x] (iterate s x))
+   :e_
+   (fn [x] (eq x (e x)))
 
-(defn add [x y]
-  (cond
-   (e_ x)               y
-   (e_ y)               x
-   (and (o_ x) (o_ y))  (i (add (o' x) (o' y)))
-   (and (o_ x) (i_ y))  (o (s (add (o' x) (i' y))))
-   (and (i_ x) (o_ y))  (o (s (add (i' x) (o' y))))
-   (and (i_ x) (i_ y))  (i (s (add (i' x) (i' y))))))
+   :i_
+   (fn [x] (not (or (e_ x) (o_ x))))
 
-(defn sub [x y]
-  (cond
-   (e_ y)              x
-   (and (o_ x) (o_ y)) (s' (o (sub (o' x) (o' y))))
-   (and (o_ x) (i_ y)) (s' (s' (o (sub (o' x) (i' y)))))
-   (and (i_ x) (o_ y)) (o (sub (i' x) (o' y)))
-   (and (i_ x) (i_ y)) (s' (o (sub (i' x) (i' y))))))
+   :s
+   (fn [x]
+     (cond
+      (e_ x) (o x)
+      (o_ x) (i (o' x))
+      (i_ x) (o (s (i' x)))))
 
-(defn cmp [x y]
-  (letfn [(down [ord] (if (= ord 0) -1 ord))
-          (up   [ord] (if (= ord 0) +1 ord))]
-    (cond
-     (and (e_ x) (e_ y)) 0
-     (e_ x)              -1
-     (e_ y)              +1
-     (and (o_ x) (o_ y)) (cmp (o' x) (o' y))
-     (and (i_ x) (i_ y)) (cmp (i' x) (i' y))
-     (and (o_ x) (i_ y)) (down (cmp (o' x) (i' y)))
-     (and (i_ x) (o_ y)) (up   (cmp (i' x) (o' y))))))
+   :s'
+   (fn [x]
+     (cond
+      (eq x (o (e x))) (e x)
+      (i_ x)           (o (i' x))
+      (o_ x)           (i (s' (o' x)))))
 
-(defn min2 [x y] (if (= -1 (cmp x y)) x y))
-(defn max2 [x y] (if (= -1 (cmp x y)) y x))
+   :all-from
+   (fn [x] (iterate s x))
 
-(defn mul [x y]
-  (letfn [(m [x y]
-            (cond
-             (e_ x) y
-             (o_ x) (o (m (o' x) y))
-             (i_ x) (s (add y (o (m (i' x) y))))))]
-    (cond
-     (e_ x) (e x)
-     (e_ y) (e x)
-     :else  (s (m (s' x) (s' y))))))
+   :add
+   (fn [x y]
+     (cond
+      (e_ x)               y
+      (e_ y)               x
+      (and (o_ x) (o_ y))  (i (add (o' x) (o' y)))
+      (and (o_ x) (i_ y))  (o (s (add (o' x) (i' y))))
+      (and (i_ x) (o_ y))  (o (s (add (i' x) (o' y))))
+      (and (i_ x) (i_ y))  (i (s (add (i' x) (i' y))))))
 
-(defn db [x] (s' (o x)))
-(defn hf [x] (s (i' x)))
+   :sub
+   (fn [x y]
+     (cond
+      (e_ y)              x
+      (and (o_ x) (o_ y)) (s' (o (sub (o' x) (o' y))))
+      (and (o_ x) (i_ y)) (s' (s' (o (sub (o' x) (i' y)))))
+      (and (i_ x) (o_ y)) (o (sub (i' x) (o' y)))
+      (and (i_ x) (i_ y)) (s' (o (sub (i' x) (i' y))))))
 
-(defn pow [x y]
-  (cond
-   (e_ y) (o (e x))
-   (o_ y) (mul x (pow (mul x x) (o' y)))
-   (i_ y) (mul (mul x x) (pow (mul x x) (i' y)))))
+   :cmp
+   (fn [x y]
+     (letfn [(down [ord] (if (= ord 0) -1 ord))
+             (up   [ord] (if (= ord 0) +1 ord))]
+       (cond
+        (and (e_ x) (e_ y)) 0
+        (e_ x)              -1
+        (e_ y)              +1
+        (and (o_ x) (o_ y)) (cmp (o' x) (o' y))
+        (and (i_ x) (i_ y)) (cmp (i' x) (i' y))
+        (and (o_ x) (i_ y)) (down (cmp (o' x) (i' y)))
+        (and (i_ x) (o_ y)) (up   (cmp (i' x) (o' y))))))
 
-(defn exp2 [x]
-  (cond
-   (e_ x) (o (e x))
-   :else  (db (exp2 (s' x)))))
+   :min2
+   (fn [x y] (if (= -1 (cmp x y)) x y))
 
-(defn leftshift [x y] (mul (exp2 x) y))
+   :max2
+   (fn [x y] (if (= -1 (cmp x y)) y x))
 
-(defn div-and-rem [x y]
-  (letfn [(try-to-double [x y k]
-            (if (= -1 (cmp x y))
-              (s' k)
-              (recur x (db y) (s k))))
-          (divstep [n m]
-            (let [q (try-to-double n m (e n))
-                  p (mul (exp2 q) m)]
-              [q (sub n p)]))]
-    (cond
-     (= -1 (cmp x y))
-     [(e x) x]
-     (not (e_ y))
-     (let [[qt rm] (divstep x y)
-           [z r]   (div-and-rem rm y)
-           q       (add (exp2 qt) z)]
-       [q r]))))
+   :mul
+   (fn [x y]
+     (letfn [(m [x y]
+               (cond
+                (e_ x) y
+                (o_ x) (o (m (o' x) y))
+                (i_ x) (s (add y (o (m (i' x) y))))))]
+       (cond
+        (e_ x) (e x)
+        (e_ y) (e x)
+        :else  (s (m (s' x) (s' y))))))
 
-(defn divide    [n m] (first  (div-and-rem n m)))
-(defn remainder [n m] (second (div-and-rem n m)))
+   :db
+   (fn [x] (s' (o x)))
 
-;;;_ * Misc instances --------------------------------------------------
-(extend-type Long
+   :hf
+   (fn [x] (s (i' x)))
+
+   :pow
+   (fn [x y]
+     (cond
+      (e_ y) (o (e x))
+      (o_ y) (mul x (pow (mul x x) (o' y)))
+      (i_ y) (mul (mul x x) (pow (mul x x) (i' y)))))
+
+   :exp2
+   (fn [x]
+     (cond
+      (e_ x) (o (e x))
+      :else  (db (exp2 (s' x)))))
+
+   :leftshift
+   (fn [x y] (mul (exp2 x) y))
+
+   :div-and-rem
+   (fn [x y]
+     (letfn [(try-to-double [x y k]
+               (if (= -1 (cmp x y))
+                 (s' k)
+                 (recur x (db y) (s k))))
+             (divstep [n m]
+               (let [q (try-to-double n m (e n))
+                     p (mul (exp2 q) m)]
+                 [q (sub n p)]))]
+       (cond
+        (= -1 (cmp x y))
+        [(e x) x]
+        (not (e_ y))
+        (let [[qt rm] (divstep x y)
+              [z r]   (div-and-rem rm y)
+              q       (add (exp2 qt) z)]
+          [q r]))))
+
+   :divide
+   (fn [x y] (first  (div-and-rem x y)))
+
+   :remainder
+   (fn [x y] (second (div-and-rem x y)))})
+
+;;;_  * Instances ------------------------------------------------------
+;;;_   * Integers ------------------------------------------------------
+(extend Long
   N
-  (eq [x y] (= x y))
+  (assoc N-defaults
+    :e  (fn [_] 0)
+    :o_ (fn [x] (odd? x))
+    :o  (fn [x] (+ (* 2 x) 1))
+    :o' (fn [x] (cond (and (odd? x) (> x 0)) (/ (- x 1) 2)))
+    :i  (fn [x] (+ (* 2 x) 2))
+    :i' (fn [x] (cond (and (even? x) (> x 0)) (/ (- x 2) 2)))))
 
-  (e  [_]   0)
-  (o_ [x]   (odd? x))
+(deftest int-test
+  (is (= (mul 10 5) 50))
+  (is (= (exp2 5)   32)))
 
-  (o  [x]   (+ (* 2 x) 1))
-  (o' [x]   (cond (and (odd? x) (> x 0)) (/ (- x 1) 2)))
+;;;_   * Bijective Base 2 ----------------------------------------------
+(defrecord Bee [ctor arg])
 
-  (i  [x]   (+ (* 2 x) 2))
-  (i' [x]   (cond (and (even? x) (> x 0)) (/ (- x 2) 2))))
-
-(defrecord Bee [ctor arg]
+(extend Bee
   N
-  (eq [x y] (= x y))
-
-  (e  [_]   (B))
-
-  (o  [x]   (O x))
-  (i  [x]   (I x))
-
-  (o' [x]   (case (:ctor x) :O (:arg x)))
-  (i' [x]   (case (:ctor x) :I (:arg x)))
-
-  (o_ [x]   (= (:ctor x) :O)))
+  (assoc N-defaults
+    :e  (fn [_] (B))
+    :o  (fn [x] (O x))
+    :i  (fn [x] (I x))
+    :o' (fn [x] (case (:ctor x) :O (:arg x)))
+    :i' (fn [x] (case (:ctor x) :I (:arg x)))
+    :o_ (fn [x] (= (:ctor x) :O))))
 
 (defn B []  (Bee. :B nil))
 (defn O [B] (Bee. :O B))
 (defn I [B] (Bee. :I B))
 
-(deftest arith-test
-  (is (= (mul 10 5)                50))
-  (is (= (exp2 5)                  32))
+(deftest bb2-test
   (is (= (add (O (B)) (I (O (B)))) (O (I (B))))))
 
-;;;_ * Trees -----------------------------------------------------------
-(defrecord Tee [ctor arg1 arg2]
+;;;_   * Trees ---------------------------------------------------------
+(defrecord Tee [ctor arg1 arg2])
+
+(extend Tee
   N
-  (eq [x y] (= x y))
+  (assoc N-defaults
+    :e
+    (fn [_] (T))
 
-  (e [_] (T))
+    :o
+    (fn [x]
+      (case (:ctor x)
+        :T (V (T) ())
+        :V (V (s (:arg1 x)) (:arg2 x))
+        :W (V (T) (cons (:arg1 x) (:arg2 x)))))
 
-  (o [x]
-    (case (:ctor x)
-      :T (V (T) ())
-      :V (V (s (:arg1 x)) (:arg2 x))
-      :W (V (T) (cons (:arg1 x) (:arg2 x)))))
+    :i
+    (fn [x]
+      (case (:ctor x)
+        :T (W (T) ())
+        :V (W (T) (cons (:arg1 x) (:arg2 x)))
+        :W (W (s (:arg1 x)) (:arg2 x))))
 
-  (i [x]
-    (case (:ctor x)
-      :T (W (T) ())
-      :V (W (T) (cons (:arg1 x) (:arg2 x)))
-      :W (W (s (:arg1 x)) (:arg2 x))))
+    :o'
+    (fn [x]
+      (assert (= :V (:ctor x)))
+      (if (= (T) (:arg1 x))
+        (if (= () (:arg2 x))
+          (T)
+          (W (first (:arg2 x)) (rest (:arg2 x))))
+        (V (s' (:arg1 x)) (:arg2 x))))
 
-  (o' [x]
-    (assert (= :V (:ctor x)))
-    (if (= (T) (:arg1 x))
-      (if (= () (:arg2 x))
+    :i'
+    (fn [x]
+      (assert (= :W (:ctor x)))
+      (if (= (T) (:arg1 x))
+        (if (= () (:arg2 x))
+          (T)
+          (V (first (:arg2 x)) (rest (:arg2 x))))
+        (W (s' (:arg1 x)) (:arg2 x))))
+
+    :o_
+    (fn [x] (= :V (:ctor x)))
+
+    :exp2
+    (fn [x]
+      (if (= :T (:ctor x))
+        (V (T) ())
+        (s (V (s' x) ()))))
+
+    :leftshift
+    (fn [x y]
+      (if (= (T) y)
         (T)
-        (W (first (:arg2 x)) (rest (:arg2 x))))
-      (V (s' (:arg1 x)) (:arg2 x))))
-
-  (i' [x]
-    (assert (= :W (:ctor x)))
-    (if (= (T) (:arg1 x))
-      (if (= () (:arg2 x))
-        (T)
-        (V (first (:arg2 x)) (rest (:arg2 x))))
-      (W (s' (:arg1 x)) (:arg2 x))))
-
-  (o_ [x] (= :V (:ctor x))))
+        (cond
+         (o_ y) (s (vmul x     (s' y)))
+         (i_ y) (s (vmul (s x) (s' y))))))))
 
 (defn T []     (Tee. :T nil nil))
 (defn V [T Ts] (Tee. :V T   Ts))
 (defn W [T Ts] (Tee. :W T   Ts))
-
-(defn exp2' [x]
-  (if (= :T (:ctor x))
-    (V (T) ())
-    (s (V (s' x) ()))))
 
 (defn vmul [n y]
   (cond
@@ -213,13 +276,21 @@
    (= :V (:ctor y)) (V (add (s' n) (:arg1 y)) (:arg2 y))
    (= :W (:ctor y)) (V (s' n) (cons (:arg1 y) (:arg2 y)))))
 
-(defn leftshift' [n y]
-  (if (= (T) y)
-    (T)
-    (cond
-     (o_ y) (s (vmul n     (s' y)))
-     (i_ y) (s (vmul (s n) (s' y))))))
+(deftest tee-test
+  (is (= (t 5)
+         (V (T) (list (T)))))
+  (is (= (exp2 (t 5))
+         (W (T) (list (V (V (T) ()) ())))))
+  (is (= (n (exp2 (t 5)))
+         32))
+  (is (= (t 10)
+         (W (V (T) ()) (list (T)))))
+  (is (= (leftshift (t 10) (t 1))
+         (W (T) (list (W (T) (list (V (T) ())))))))
+  (is (= (n (leftshift (t 10) (t 1)))
+         1024)))
 
+;;;_  * Views ----------------------------------------------------------
 (defn view
   "View an X as a Y."
   [x y]
@@ -240,29 +311,15 @@
   (is (= (n (b (t 42)))
          42)))
 
-(deftest tee-test
-  (is (= (t 5)
-         (V (T) (list (T)))))
-  (is (= (exp2' (t 5))
-         (W (T) (list (V (V (T) ()) ())))))
-  (is (= (n (exp2' (t 5)))
-         32))
-  (is (= (t 10)
-         (W (V (T) ()) (list (T)))))
-  (is (= (leftshift' (t 10) (t 1))
-         (W (T) (list (W (T) (list (V (T) ())))))))
-  (is (= (n (leftshift' (t 10) (t 1)))
-         1024)))
-
 ;;;_ * Numbers ---------------------------------------------------------
-(defn fermat [n] (s (exp2' (exp2' n))))
+(defn fermat [n] (s (exp2 (exp2 n))))
 
 (deftest fermat-test
   (is (= (fermat (t 11))
          (V (T) (list (T) (V (T) (list (W (T) (list (V (T) ()))))))))))
 
 
-(defn mersenne [p] (s' (exp2' p)))
+(defn mersenne [p] (s' (exp2 p)))
 
 (defn prime45    [] (t 43112609))
 (defn mersenne45 [] (mersenne (prime45))) ;2^43112609 - 1
@@ -295,77 +352,106 @@
   )
 
 ;;;_ * Collections -----------------------------------------------------
+;;;_  * Protocol -------------------------------------------------------
 (defprotocol Collections
   "Convert between natural numbers and lists by using the bijection
    f(x, y) = 2^x(2*y + 1)."
-  (c   [x y])
-  (c'  [x])
-  (c'' [x]))
+  (c         [x y])
+  (c'        [x])
+  (c''       [x])
+  (to-list   [x])
+  (from-list [witness xs])
+  (list2mset [witness ns])
+  (mset2list [witness ms])
+  (list2set  [witness xs])
+  (set2list  [witness xs])
+  (to-mset   [witness x])
+  (from-mset [witness ms])
+  (to-set    [witness x])
+  (from-set  [witness ns]))
 
-;; Default implementation:
-(extend-type Object
-  Collections
-  (c   [x y] (mul (exp2 x) (o y)))
-  (c'  [x]   (when (not (e_ x)) (if (o_ x) (e x) (s (c' (hf x))))))
-  (c'' [x]   (when (not (e_ x)) (if (o_ x) (o' x) (c'' (hf x))))))
+(def Collections-defaults
+  {:c
+   (fn [x y] (mul (exp2 x) (o y)))
 
+   :c'
+   (fn [x] (when (not (e_ x)) (if (o_ x) (e x) (s (c' (hf x))))))
 
-(defn to-list [x]
-  (cond
-   (e_ x) []
-   :else  (cons (c' x) (to-list (c'' x)))))
+   :c''
+   (fn [x] (when (not (e_ x)) (if (o_ x) (o' x) (c'' (hf x)))))
 
-(defn from-list [xs witness]
-  (cond
-   (empty? xs) (e witness)
-   :else       (c (first xs) (from-list (rest xs) witness))))
+   :to-list
+   (fn [x]
+     (cond
+      (e_ x) []
+      :else  (cons (c' x) (to-list (c'' x)))))
 
+   :from-list
+   (fn [witness xs]
+     (cond
+      (empty? xs) (e witness)
+      :else       (c (first xs) (from-list witness (rest xs)))))
+
+   :list2mset
+   (fn [witness ns] (rest (scanl add (e witness) ns)))
+
+   :mset2list
+   (fn [witness ms] (map sub ms (cons (e witness) ms)))
+
+   :list2set
+   (fn [witness xs] (map s' (list2mset witness (map s xs))))
+
+   :set2list
+   (fn [witness xs] (map s' (mset2list witness (map s xs))))
+
+   :to-mset
+   (fn [witness x] (list2mset witness (to-list x)))
+
+   :from-mset
+   (fn [witness ms] (from-list witness (mset2list witness ms)))
+
+   :to-set
+   (fn [witness x] (list2set witness (to-list x)))
+
+   :from-set
+   (fn [witness ns] (from-list witness (set2list witness ns)))})
 
 (defn scanl [f z xs]
   (reverse (reduce (fn [acc x] (cons (f (first acc) x) acc)) (list z) xs)))
 
+;;;_  * Instances ------------------------------------------------------
+(extend Bee Collections Collections-defaults)
 
-(defn list2mset [ns witness] (rest (scanl add (e witness) ns)))
+(extend Long Collections Collections-defaults)
 
-(defn mset2list [ms witness] (map sub ms (cons (e witness) ms)))
-
-(defn list2set [xs witness] (map s' (list2mset (map s xs) witness)))
-
-(defn set2list [xs witness] (map s' (mset2list (map s xs) witness)))
-
-(defn to-mset [x witness] (list2mset (to-list x) witness))
-
-(defn from-mset [ms witness] (from-list (mset2list ms witness) witness))
-
-(defn to-set [x witness] (list2set (to-list x) witness))
-
-(defn from-set [ns witness] (from-list (set2list ns witness) witness))
-
-
-(extend-type Tee
+(extend Tee
   Collections
-  (c  [n y] (s (vmul n (s' (o y)))))
+  (assoc Collections-defaults
+    :c
+    (fn [n y] (s (vmul n (s' (o y)))))
 
-  (c' [z]
-    (cond
-     (o_ z) (T)
-     :else  (let [q (s' z)]
-              (assert (= :V (:ctor q)))
-              (s (:arg1 q)))))
+    :c'
+    (fn [z]
+      (cond
+       (o_ z) (T)
+       :else  (let [q (s' z)]
+                (assert (= :V (:ctor q)))
+                (s (:arg1 q)))))
 
-  (c'' [z]
-    (cond
-     (o_ z) (o' z)
-     :else (let [q (s' z)
-                 f (fn [xs]
-                     (if (empty? xs)
-                       (T)
-                       (s (i' (W (first xs) (rest xs))))))]
-             (assert (= :V (:ctor q)))
-             (f (:arg2 q))))))
+    :c''
+    (fn [z]
+      (cond
+       (o_ z) (o' z)
+       :else (let [q (s' z)
+                   f (fn [xs]
+                       (if (empty? xs)
+                         (T)
+                         (s (i' (W (first xs) (rest xs))))))]
+               (assert (= :V (:ctor q)))
+               (f (:arg2 q)))))))
 
 (deftest from-set-test
-  (is (= (from-set (map t '(1 100 123 234)) (T))
+  (is (= (from-set (T) (map t '(1 100 123 234)))
          (W (V (T) ())
             (list (V (T) (list (T) (W (T) ()) (T)))
                   (T)
@@ -382,12 +468,13 @@
 ;; TODO
 
 ;;;_ * Computations ----------------------------------------------------
+;;;_  * Protocol -------------------------------------------------------
 (defprotocol SpecialComputation
   (dual       [x])
   (bitsize    [x])
   (repsize    [x])
   (deconz     [x])
-  (conz       [xy])
+  (conz       [witness xy])
   (ocount     [x])
   (icount     [x])
   (otrim      [x])
@@ -395,115 +482,154 @@
   (otimes     [x y])
   (itimes     [x y])
   (to-list'   [x])
-  (from-list' [xs witness]))
+  (from-list' [witness xs]))
 
-(extend-type Object
+(def SpecialComputation-defaults
+  {:dual
+   (fn [x]
+     (cond
+      (e_ x) (e x)
+      (o_ x) i (dual (o' x))
+      (i_ x) o (dual (i' x))))
+
+   :bitsize
+   (fn [x]
+     (cond
+      (e_ x) (e x)
+      (o_ x) (s (bitsize (o' x)))
+      (i_ x) (s (bitsize (i' x)))))
+
+   :repsize
+   (fn [x] (bitsize x))
+
+   :deconz
+   (fn [z]
+     (cond
+      (o_ z)
+      (let [x0 (s' (ocount z))
+            y  (otrim z)
+            x  (if (e_ y) (s' (o x0)) x0)]
+        [x y])
+
+      (i_ z)
+      (let [x0 (s' (icount z))
+            y  (itrim z)
+            x  (if (e_ y) (s' (i x0)) x0)]
+        [x y])))
+
+   :conz
+   (fn [witness [x y]]
+     (cond
+      (and (e_ x) (e_ y)) (s (e x))
+      (and (o_ x) (e_ y)) (itimes (s (i' (s x))) (e x))
+      (and (i_ x) (e_ y)) (otimes (s (o' (s x))) (e x))
+      (o_ y)              (itimes (s x) y)
+      (i_ y)              (otimes (s x) y)))
+
+   :ocount
+   (fn [x]
+     (cond
+      (o_ x) (s (ocount (o' x)))
+      :else  (e x)))
+
+   :icount
+   (fn [x]
+     (cond
+      (i_ x) (s (icount (i' x)))
+      :else  (e x)))
+
+   :otrim
+   (fn [x]
+     (cond
+      (o_ x) (otrim (o' x))
+      :else  x))
+
+   :itrim
+   (fn [x]
+     (cond
+      (i_ x) (itrim (i' x))
+      :else  x))
+
+   :otimes
+   (fn [x y]
+     (cond
+      (e_ x) y
+      :else  (otimes (s' x) (o y))))
+
+   :itimes
+   (fn [x y]
+     (cond
+      (e_ x) y
+      :else  (itimes (s' x) (i y))))
+
+   :to-list'
+   (fn [x]
+     (cond
+      (e_ x) ()
+      :else  (let [[hd tl] (deconz x)]
+               (cons hd (to-list' tl)))))
+
+   :from-list'
+   (fn [witness xs]
+     (cond
+      (empty? xs) (e witness)
+      :else       (conz witness [(first xs) (from-list' witness (rest xs))])))})
+
+;;;_  * Instances ------------------------------------------------------
+(extend Bee SpecialComputation SpecialComputation-defaults)
+
+(extend Long SpecialComputation SpecialComputation-defaults)
+
+(extend Tee
   SpecialComputation
-  (dual [x]
-    (cond
-     (e_ x) (e x)
-     (o_ x) i (dual (o' x))
-     (i_ x) o (dual (i' x))))
+  (assoc SpecialComputation-defaults
+    :bitsize
+    (fn [x]
+      (let [add1 (fn [x y] (s (add x y)))]
+        (case (:ctor x)
+          :T (T)
+          :V (s (reduce add1 (:arg1 x) (:arg2 x)))
+          :W (s (reduce add1 (:arg1 x) (:arg2 x))))))
 
-  (bitsize [x]
-    (cond
-     (e_ x) (e x)
-     (o_ x) (s (bitsize (o' x)))
-     (i_ x) (s (bitsize (i' x)))))
-
-  (repsize [x] (bitsize x))
-
-  (deconz [z]
-    (cond
-     (o_ z)
-     (let [x0 (s' (ocount z))
-           y  (otrim z)
-           x (if (e_ y) (s' (o x0)) x0)]
-       [x y])
-
-     (i_ z)
-     (let [x0 (s' (icount z))
-           y (itrim z)
-           x (if (e_ y) (s' (i x0)) x0)]
-       [x y])))
-
-  (conz [[x y]]
-    (cond
-     (and (e_ x) (e_ y)) (s (e x))
-     (and (o_ x) (e_ y)) (itimes (s (i' (s x))) (e x))
-     (and (i_ x) (e_ y)) (otimes (s (o' (s x))) (e x))
-     (o_ y)              (itimes (s x) y)
-     (i_ y)              (otimes (s x) y)))
-
-  (ocount [x]
-    (cond
-     (o_ x) (s (ocount (o' x)))
-     :else  (e x)))
-
-  (icount [x]
-    (cond
-     (i_ x) (s (icount (i' x)))
-     :else  (e x)))
-
-  (otrim [x]
-    (o_ x) (otrim (o' x))
-    :else  x)
-
-  (itrim [x]
-    (i_ x) (itrim (i' x))
-    :else  x)
-
-  (otimes [x y]
-    (cond
-     (e_ x) y
-     :else  (otimes (s' x) (o y))))
-
-  (itimes [x y]
-    (cond
-     (e_ x) y
-     :else  (itimes (s' x) (i y))))
-
-  (to-list' [x]
-    (cond
-     (e_ x) ()
-     :else  (let [[hd tl] (decons x)]
-              (cons hd (to-list' tl)))))
-
-  (from-list' [xs witness]
-    (cond
-     (empty? xs) (e witness)
-     :else       (conz [(first xs) (from-list' (rest xs) witness)]))))
-
-(extend-type Tee
-  SpecialComputation
-  (bitsize [x]
-    (let [add1 (fn [x y] (s (add x y)))]
+    :dual
+    (fn [x]
       (case (:ctor x)
         :T (T)
-        :V (s (reduce add1 (:arg1 x) (:arg2 x)))
-        :W (s (reduce add1 (:arg1 x) (:arg2 x))))))
+        :V (W (:arg1 x) (:arg2 x))
+        :W (V (:arg1 x) (:arg2 x))))
 
-  (dual [x]
-    (case (:ctor x)
-      :T (T)
-      :V (W (:arg1 x) (:arg2 x))
-      :W (V (:arg1 x) (:arg2 x))))
+    :repsize
+    (fn [x]
+      (case (:ctor x)
+        :T (T)
+        :V (s (reduce add (T) (map repsize (cons (:arg1 x) (:arg2 x)))))
+        :W (s (reduce add (T) (map repsize (cons (:arg1 x) (:arg2 x)))))))
 
-  (repsize [x]
-    (case (:ctor x)
-      :T (T)
-      :V (s (reduce add (T) (map tsize (cons (:arg1 x) (:arg2 x)))))
-      :W (s (reduce add (T) (map tsize (cons (:arg1 x) (:arg2 x)))))))
+    :deconz
+    (fn [x]
+      (case (:ctor x)
+        :V (if (empty? (:arg2 x))
+             [(s' (o (:arg1 x))) (T)]
+             [(:arg1 x) (W (first (:arg2 x)) (rest (:arg2 x)))])
+        :W (if (empty? (:arg2 x))
+             [(s' (i (:arg1 x))) (T)]
+             [(:arg1 x) (V (first (:arg2 x)) (rest (:arg2 x)))])))
 
-  (deconz [x]
+    :conz
+    (fn [[x y]]
+      (cond
+       (and (= x (T))  (= y (T))) (V (T) ())
+       (and (o_ x)     (= y (T))) (W (i' (s x)) ())
+       (and (i_ x)     (= y (T))) (V (o' (s x)) ())
+       (= (:ctor y) V) (W x (cons (:arg1 y) (:arg2 y)))
+       (= (:ctor y) W) (V x (cons (:arg1 y) (:arg2 y)))))))
 
-
-    )
-
-  (conz [[x y]]
-
-
-    ))
+(deftest list-test
+  (is (= (map to-list' (range 21))
+         '(() (0) (1) (2) (0 0) (0 1) (3) (4) (0 2) (0 0 0) (1 0) (1 1)
+           (0 0 1) (0 3) (5) (6) (0 4) (0 0 2) (1 2) (1 0 0) (0 0 0 0))))
+  (is (= (map #(from-list' 1 %) (map to-list' (range 21)))
+         '(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20))))
 
 ;;;_ * Benchmarks ------------------------------------------------------
 
