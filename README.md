@@ -1,4 +1,4 @@
-# clj-giant
+# clj-libgiantnum
 
 A straight-forward port of the Haskell code from [1] to Clojure.
 Provides a protocol which abstracts arithmetic over the natural numbers
